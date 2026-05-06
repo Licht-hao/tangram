@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>七巧板 · 自由拼搭</title>
   <style>
     * {
@@ -19,6 +19,8 @@
       align-items: center;
       min-height: 100vh;
       padding: 1.5rem;
+      /* 防止移动端拖拽时页面滚动 */
+      overscroll-behavior: none;
     }
 
     .game-container {
@@ -34,12 +36,12 @@
     }
 
     .user-avatar {
-    width: 32px;          /* 可自定义尺寸 */
-    height: 32px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 1px solid #cbd5e1;  /* 可选边框 */
-  }
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid #cbd5e1;
+    }
 
     /* 画板区域 */
     .canvas-area {
@@ -64,17 +66,30 @@
       display: block;
       width: 100%;
       height: 100%;
-      pointer-events: auto;
+      touch-action: none;  /* 禁止触摸时页面滑动 */
     }
 
     .status-bar {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
+      gap: 0.5rem;
       color: #475569;
       font-size: 0.9rem;
       padding: 0.25rem 0.5rem;
+    }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .user-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.2rem 0;
     }
 
     .hint-text {
@@ -123,6 +138,7 @@
       width: 100%;
       display: block;
       aspect-ratio: 1 / 1;
+      touch-action: none;  /* 禁止触摸时页面滑动 */
     }
 
     .tool-buttons {
@@ -184,29 +200,32 @@
 
     .tile.palette-piece {
       cursor: grab;
+      touch-action: none;
     }
 
     .tile.palette-piece:active {
       cursor: grabbing;
     }
 
-    .tile canvas-piece {
+    .tile.canvas-piece {
       cursor: move;
+      touch-action: none;
     }
 
-    .tile canvas-piece.active polygon,
-    .tile canvas-piece.selected polygon {
+    .tile.canvas-piece.active polygon,
+    .tile.canvas-piece.selected polygon {
       stroke: #1e293b;
       stroke-width: 1.5;
     }
 
-    .tile canvas-piece.selected polygon {
+    .tile.canvas-piece.selected polygon {
       stroke-dasharray: 3, 3;
     }
 
     .rotator-circle {
       cursor: grab;
       filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.3));
+      touch-action: none;
     }
 
     .rotator-line {
@@ -249,6 +268,7 @@
         <g id="rotatorGroup"></g>
       </svg>
     </div>
+
     <div class="status-bar">
       <div class="status-row">
         <div class="hint-text">
@@ -314,7 +334,7 @@
     let isShiftPressed = false;
 
     // 拖拽预览状态 (从调色板拖出)
-    let dragPreview = null;             // 预览图形 { shapeId, color, path, transformStr } 或 null
+    let dragPreview = null;             // 预览图形 { shapeId, color, path, rotateAngle }
     let dragStartClient = { x: 0, y: 0 };
     let isDraggingFromPalette = false;
 
@@ -364,14 +384,6 @@
       return { x: svgP.x, y: svgP.y };
     }
 
-    // 获取画布上某个piece的当前变换数据
-    function getPieceTransformData(pieceId) {
-      const piece = canvasPieces.find(p => p.id === pieceId);
-      if (!piece) return null;
-      const { translate, rotate } = extractTransformParams(piece.transform);
-      return { translate, rotate, flipped: piece.flipped || false };
-    }
-
     // ---------- 渲染函数 ----------
     function renderPalette() {
       paletteSvg.innerHTML = '';
@@ -386,7 +398,7 @@
         path.setAttribute("stroke", "white");
         path.setAttribute("stroke-width", "0.3");
         g.appendChild(path);
-        g.addEventListener("mousedown", onPaletteMouseDown);
+        g.addEventListener("pointerdown", onPaletteMouseDown);
         paletteSvg.appendChild(g);
       });
     }
@@ -415,7 +427,7 @@
         }
         g.appendChild(path);
 
-        g.addEventListener("mousedown", onCanvasPieceMouseDown);
+        g.addEventListener("pointerdown", onCanvasPieceMouseDown);
         piecesGroup.appendChild(g);
       });
 
@@ -458,7 +470,7 @@
       circle.setAttribute("stroke", "white");
       circle.setAttribute("stroke-width", "1.5");
       circle.setAttribute("class", "rotator-circle");
-      circle.addEventListener("mousedown", onRotatorMouseDown);
+      circle.addEventListener("pointerdown", onRotatorMouseDown);
       rotatorGroup.appendChild(circle);
     }
 
@@ -480,7 +492,6 @@
       const origShape = originalShapes.find(s => s.id === shapeId);
       if (!origShape) return;
 
-      // 解析原始旋转信息用于预览
       const { rotate } = extractTransformParams(origShape.initialTransform);
       dragPreview = {
         shapeId: shapeId,
@@ -491,12 +502,10 @@
       isDraggingFromPalette = true;
       dragStartClient = { x: e.clientX, y: e.clientY };
 
-      // 添加临时预览元素到画布 (先隐藏，在移动时显示)
       updateDragPreview(e.clientX, e.clientY);
     }
 
     function updateDragPreview(clientX, clientY) {
-      // 移除旧预览
       const oldPreview = document.getElementById('dragPreviewGroup');
       if (oldPreview) oldPreview.remove();
 
@@ -520,7 +529,6 @@
     function finishDragFromPalette(clientX, clientY) {
       if (!dragPreview) return;
 
-      // 检查鼠标是否在画布区域内
       const rect = canvasSvg.getBoundingClientRect();
       const isOverCanvas = clientX >= rect.left && clientX <= rect.right &&
                            clientY >= rect.top && clientY <= rect.bottom;
@@ -539,7 +547,6 @@
             flipped: false
           };
           canvasPieces.push(newPiece);
-          // 选中新图形
           if (isShiftPressed) {
             selectedPieceIds.add(newPiece.id);
           } else {
@@ -551,7 +558,6 @@
         }
       }
 
-      // 清理预览
       const previewEl = document.getElementById('dragPreviewGroup');
       if (previewEl) previewEl.remove();
       dragPreview = null;
@@ -590,7 +596,6 @@
       const svgCoords = clientToSvg(canvasSvg, e.clientX, e.clientY);
       moveStartSvg = { x: svgCoords.x, y: svgCoords.y };
 
-      // 记录所有选中图形的初始变换
       moveStartTransforms.clear();
       for (const id of selectedPieceIds) {
         const piece = canvasPieces.find(p => p.id === id);
@@ -599,7 +604,6 @@
           moveStartTransforms.set(id, { translate: { ...translate }, rotate: rotate.angle, flipped: piece.flipped });
         }
       }
-      // 如果活动图形不在选中集合中（理论上不会），单独移动活动图形
       if (!selectedPieceIds.has(activePieceId) && activePieceId) {
         const piece = canvasPieces.find(p => p.id === activePieceId);
         if (piece) {
@@ -609,7 +613,10 @@
       }
 
       renderCanvas();
-      e.currentTarget.setPointerCapture(e.pointerId || 1);
+      // 使用指针捕获
+      if (e.currentTarget.setPointerCapture) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
     }
 
     function onCanvasMouseMove(e) {
@@ -623,7 +630,6 @@
       const dx = svgCoords.x - moveStartSvg.x;
       const dy = svgCoords.y - moveStartSvg.y;
 
-      // 更新所有选中图形的位置
       const idsToMove = new Set(selectedPieceIds);
       if (activePieceId && !idsToMove.has(activePieceId)) idsToMove.add(activePieceId);
 
@@ -650,16 +656,15 @@
       if (isMovingPieces) {
         isMovingPieces = false;
         moveStartTransforms.clear();
-        // 释放指针捕获
         if (e.target && e.target.releasePointerCapture) {
-          e.target.releasePointerCapture(e.pointerId || 1);
+          e.target.releasePointerCapture(e.pointerId);
         }
       }
     }
 
     // 点击空白区域取消选中
     function onCanvasBackgroundClick(e) {
-      if (e.target === canvasSvg || e.target.id === 'canvasBackground' || e.target.tagName === 'rect') {
+      if (e.target === canvasSvg || e.target.tagName === 'rect') {
         activePieceId = null;
         selectedPieceIds.clear();
         renderCanvas();
@@ -688,7 +693,6 @@
         let angleDiff = currentAngle - startAngle;
         let newAngle = initialRotation + angleDiff;
 
-        // 角度吸附
         const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315, 360];
         const threshold = 8;
         let normalized = newAngle % 360;
@@ -702,8 +706,6 @@
         }
         if (newAngle === 360) newAngle = 0;
 
-        // 更新活动图形以及所有选中图形的旋转（保持相对角度？这里简化：只旋转活动图形，但多选时通常一起旋转）
-        // 按原需求：旋转活动图形时，其他选中图形也同步旋转（相对旋转差值）
         const angleChange = newAngle - initialRotation;
         for (const id of selectedPieceIds) {
           const p = canvasPieces.find(p => p.id === id);
@@ -712,7 +714,6 @@
           const newR = r.angle + angleChange;
           p.transform = generateTransform(t, newR, p.flipped);
         }
-        // 确保活动图形更新
         const activePiece = canvasPieces.find(p => p.id === activePieceId);
         if (activePiece) {
           const { translate: t } = extractTransformParams(activePiece.transform);
@@ -723,12 +724,12 @@
 
       function onRotateUp() {
         isRotating = false;
-        document.removeEventListener('mousemove', onRotateMove);
-        document.removeEventListener('mouseup', onRotateUp);
+        document.removeEventListener('pointermove', onRotateMove);
+        document.removeEventListener('pointerup', onRotateUp);
       }
 
-      document.addEventListener('mousemove', onRotateMove);
-      document.addEventListener('mouseup', onRotateUp);
+      document.addEventListener('pointermove', onRotateMove);
+      document.addEventListener('pointerup', onRotateUp);
     }
 
     // ---------- 翻转功能 ----------
@@ -756,7 +757,6 @@
 
     // ---------- 全局事件监听 ----------
     function setupGlobalListeners() {
-      // 键盘Shift状态
       window.addEventListener('keydown', (e) => {
         if (e.key === 'Shift') {
           isShiftPressed = true;
@@ -775,8 +775,8 @@
         }
       });
 
-      // 全局鼠标移动和释放，处理画布外释放
-      document.addEventListener('mousemove', (e) => {
+      // 全局 pointer 事件
+      document.addEventListener('pointermove', (e) => {
         if (isDraggingFromPalette) {
           updateDragPreview(e.clientX, e.clientY);
         } else if (isMovingPieces) {
@@ -784,7 +784,7 @@
         }
       });
 
-      document.addEventListener('mouseup', (e) => {
+      document.addEventListener('pointerup', (e) => {
         if (isDraggingFromPalette) {
           finishDragFromPalette(e.clientX, e.clientY);
         }
@@ -794,14 +794,7 @@
         }
       });
 
-      // 画布背景点击
       canvasSvg.addEventListener('click', onCanvasBackgroundClick);
-      // 防止从画布空白区域开始拖拽
-      canvasSvg.addEventListener('mousedown', (e) => {
-        if (e.target === canvasSvg || e.target.id === 'canvasBackground' || e.target.tagName === 'rect') {
-          // 不启动移动
-        }
-      });
     }
 
     // 绑定按钮事件
@@ -812,8 +805,6 @@
     renderPalette();
     renderCanvas();
     setupGlobalListeners();
-
-    // 初始选中计数
     updateSelectedCount();
   })();
 </script>
