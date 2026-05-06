@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>七巧板 · 自由拼搭</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #f0f2f5;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    .game-container {
+      display: flex;
+      flex-wrap: wrap;
+      max-width: 1100px;
+      width: 100%;
+      gap: 1.5rem;
+      background: white;
+      border-radius: 1.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+      padding: 1.5rem;
+    }
+
+    /* 画板区域 */
+    .canvas-area {
+      flex: 2;
+      min-width: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .canvas-wrapper {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      border-radius: 1rem;
+      overflow: hidden;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+
+    .canvas-wrapper svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: auto;
+    }
+
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      color: #475569;
+      font-size: 0.9rem;
+      padding: 0.25rem 0.5rem;
+    }
+
+    .hint-text {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .selected-badge {
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 0.2rem 0.8rem;
+      border-radius: 999px;
+      font-weight: 500;
+    }
+
+    /* 侧边栏 */
+    .sidebar {
+      flex: 0.8;
+      min-width: 160px;
+      background: #f9fafb;
+      border-radius: 1rem;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    .sidebar h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1e293b;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 0.5rem;
+    }
+
+    .palette-box {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 0.5rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    .palette-box svg {
+      width: 100%;
+      display: block;
+      aspect-ratio: 1 / 1;
+    }
+
+    .tool-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.6rem 0.8rem;
+      border: none;
+      border-radius: 0.65rem;
+      font-weight: 500;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: white;
+      border: 1px solid #e2e8f0;
+      color: #1e293b;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-warning {
+      background: #f97316;
+      border-color: #f97316;
+      color: white;
+    }
+
+    .btn-warning:hover {
+      background: #ea580c;
+    }
+
+    .btn-outline {
+      background: white;
+      border: 1px solid #cbd5e1;
+    }
+
+    .btn-outline:hover {
+      background: #f1f5f9;
+    }
+
+    .tile {
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+
+    .tile.palette-piece {
+      cursor: grab;
+    }
+
+    .tile.palette-piece:active {
+      cursor: grabbing;
+    }
+
+    .tile canvas-piece {
+      cursor: move;
+    }
+
+    .tile canvas-piece.active polygon,
+    .tile canvas-piece.selected polygon {
+      stroke: #1e293b;
+      stroke-width: 1.5;
+    }
+
+    .tile canvas-piece.selected polygon {
+      stroke-dasharray: 3, 3;
+    }
+
+    .rotator-circle {
+      cursor: grab;
+      filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.3));
+    }
+
+    .rotator-line {
+      stroke: #1e293b;
+      stroke-width: 1;
+      stroke-dasharray: 2, 2;
+      pointer-events: none;
+    }
+
+    .preview-piece {
+      opacity: 0.65;
+      pointer-events: none;
+    }
+
+    @media (max-width: 700px) {
+      .game-container {
+        flex-direction: column;
+      }
+      .sidebar {
+        order: -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="game-container">
+  <!-- 画板区域 -->
+  <div class="canvas-area">
+    <div class="canvas-wrapper">
+      <svg id="canvasSvg" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8f0" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="640" height="360" fill="url(#gridPattern)"/>
+        <g id="piecesGroup"></g>
+        <g id="rotatorGroup"></g>
+      </svg>
+    </div>
+    <div class="status-bar">
+      <div class="hint-text">
+        <span>🖱️ 拖拽右侧图形到画板</span>
+        <span class="selected-badge" id="selectedCount">已选 0 块</span>
+      </div>
+      <div class="hint-text">
+        <span>🔧 按住Shift多选 | 拖拽小黑点旋转</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 侧边栏 -->
+  <div class="sidebar">
+    <h3>🧩 七巧板组件</h3>
+    <div class="palette-box">
+      <svg id="paletteSvg" viewBox="0 0 130 130" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="tool-buttons">
+      <button class="btn btn-outline" id="flipBtn">
+        <span>↔️</span> 翻转选中
+      </button>
+      <button class="btn btn-warning" id="clearBtn">
+        <span>🗑️</span> 清空画板
+      </button>
+    </div>
+    <div style="font-size:0.8rem; color:#64748b; margin-top:0.2rem;">
+      <p>• 从左侧图形拖入画板（无限次）</p>
+      <p>• 点击画板图形选中，拖拽移动</p>
+      <p>• 小黑点可360°旋转</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    // ---------- 七巧板原始形状定义 ----------
+    const originalShapes = [
+      { id: 'big-tri-1', color: '#0f82f2', path: 'M-65.36,-32.68L0,32.68L65.36,-32.68Z', initialTransform: 'translate(65.36 32.68)' },
+      { id: 'big-tri-2', color: '#cd0e66', path: 'M-65.36,-32.68L0,32.68L65.36,-32.68Z', initialTransform: 'translate(32.68 65.36) rotate(270)' },
+      { id: 'medium-tri', color: '#009ea6', path: 'M0,-16.34L32.68,16.34L-32.68,16.34Z', initialTransform: 'translate(65.36 81.7)' },
+      { id: 'small-tri-1', color: '#eb4726', path: 'M0,-16.34L32.68,16.34L-32.68,16.34Z', initialTransform: 'translate(114.38 32.68) rotate(270)' },
+      { id: 'small-tri-2', color: '#6d3bbf', path: 'M-32.68,-32.68L32.68,-32.68L32.68,32.68Z', initialTransform: 'translate(98.04 98.04) rotate(90)' },
+      { id: 'square', color: '#22ab24', path: 'M-32.68,0L0,-32.68L32.68,0L0,32.68Z', initialTransform: 'translate(98.04 65.36)' },
+      { id: 'parallelogram', color: '#fd8c00', path: 'M-49.02,16.34L16.34,16.34L49.02,-16.34L-16.34,-16.34Z', initialTransform: 'translate(49.02 114.38)' }
+    ];
+
+    // ---------- DOM元素 ----------
+    const canvasSvg = document.getElementById('canvasSvg');
+    const piecesGroup = document.getElementById('piecesGroup');
+    const rotatorGroup = document.getElementById('rotatorGroup');
+    const paletteSvg = document.getElementById('paletteSvg');
+    const selectedCountSpan = document.getElementById('selectedCount');
+
+    // ---------- 状态变量 ----------
+    let canvasPieces = [];                // 画板上的图形 { id, shapeId, color, path, transform, flipped }
+    let activePieceId = null;           // 当前活动(最后点击)的piece id
+    let selectedPieceIds = new Set();   // 多选集合
+    let isShiftPressed = false;
+
+    // 拖拽预览状态 (从调色板拖出)
+    let dragPreview = null;             // 预览图形 { shapeId, color, path, transformStr } 或 null
+    let dragStartClient = { x: 0, y: 0 };
+    let isDraggingFromPalette = false;
+
+    // 画布内移动状态
+    let isMovingPieces = false;
+    let moveStartSvg = { x: 0, y: 0 };
+    let moveStartTransforms = new Map(); // pieceId -> { translate, rotate, flipped }
+
+    // 旋转状态
+    let isRotating = false;
+
+    // ---------- 工具函数：变换解析与生成 ----------
+    function extractTransformParams(transformStr) {
+      const translate = { x: 0, y: 0 };
+      const rotate = { angle: 0 };
+      if (!transformStr) return { translate, rotate };
+
+      const translateMatch = transformStr.match(/translate\((-?\d+\.?\d*)\s+(-?\d+\.?\d*)\)/);
+      if (translateMatch) {
+        translate.x = parseFloat(translateMatch[1]);
+        translate.y = parseFloat(translateMatch[2]);
+      }
+      const rotateMatch = transformStr.match(/rotate\((-?\d+\.?\d*)\)/);
+      if (rotateMatch) {
+        rotate.angle = parseFloat(rotateMatch[1]);
+      }
+      return { translate, rotate };
+    }
+
+    function generateTransform(translate, rotateAngle, flipped = false) {
+      let t = `translate(${translate.x} ${translate.y})`;
+      if (rotateAngle !== 0) {
+        t += ` rotate(${rotateAngle})`;
+      }
+      if (flipped) {
+        t += ` scale(-1, 1)`;
+      }
+      return t;
+    }
+
+    // SVG坐标转换 (client -> svg)
+    function clientToSvg(svgElement, clientX, clientY) {
+      const pt = svgElement.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const svgP = pt.matrixTransform(svgElement.getScreenCTM().inverse());
+      return { x: svgP.x, y: svgP.y };
+    }
+
+    // 获取画布上某个piece的当前变换数据
+    function getPieceTransformData(pieceId) {
+      const piece = canvasPieces.find(p => p.id === pieceId);
+      if (!piece) return null;
+      const { translate, rotate } = extractTransformParams(piece.transform);
+      return { translate, rotate, flipped: piece.flipped || false };
+    }
+
+    // ---------- 渲染函数 ----------
+    function renderPalette() {
+      paletteSvg.innerHTML = '';
+      originalShapes.forEach(shape => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", "tile palette-piece");
+        g.setAttribute("data-shape-id", shape.id);
+        g.setAttribute("transform", shape.initialTransform);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", shape.path);
+        path.setAttribute("fill", shape.color);
+        path.setAttribute("stroke", "white");
+        path.setAttribute("stroke-width", "0.3");
+        g.appendChild(path);
+        g.addEventListener("mousedown", onPaletteMouseDown);
+        paletteSvg.appendChild(g);
+      });
+    }
+
+    function renderCanvas() {
+      // 清除现有图形组
+      while (piecesGroup.firstChild) {
+        piecesGroup.removeChild(piecesGroup.firstChild);
+      }
+
+      canvasPieces.forEach(piece => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", "tile canvas-piece");
+        if (piece.id === activePieceId) g.classList.add("active");
+        if (selectedPieceIds.has(piece.id)) g.classList.add("selected");
+        g.setAttribute("data-piece-id", piece.id);
+        g.setAttribute("transform", piece.transform);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", piece.path);
+        path.setAttribute("fill", piece.color);
+        path.setAttribute("stroke", (piece.id === activePieceId || selectedPieceIds.has(piece.id)) ? "#1e293b" : "none");
+        path.setAttribute("stroke-width", (piece.id === activePieceId || selectedPieceIds.has(piece.id)) ? "1.5" : "0");
+        if (selectedPieceIds.has(piece.id) && piece.id !== activePieceId) {
+          path.setAttribute("stroke-dasharray", "3,3");
+        }
+        g.appendChild(path);
+
+        g.addEventListener("mousedown", onCanvasPieceMouseDown);
+        piecesGroup.appendChild(g);
+      });
+
+      renderRotator();
+      updateSelectedCount();
+    }
+
+    function renderRotator() {
+      while (rotatorGroup.firstChild) {
+        rotatorGroup.removeChild(rotatorGroup.firstChild);
+      }
+      if (!activePieceId) return;
+
+      const piece = canvasPieces.find(p => p.id === activePieceId);
+      if (!piece) return;
+
+      const { translate, rotate } = extractTransformParams(piece.transform);
+      const distance = 50;
+      const angleRad = rotate.angle * Math.PI / 180;
+      const rotatorPos = {
+        x: translate.x + distance * Math.sin(angleRad),
+        y: translate.y - distance * Math.cos(angleRad)
+      };
+
+      // 连接线
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", translate.x);
+      line.setAttribute("y1", translate.y);
+      line.setAttribute("x2", rotatorPos.x);
+      line.setAttribute("y2", rotatorPos.y);
+      line.setAttribute("class", "rotator-line");
+      rotatorGroup.appendChild(line);
+
+      // 旋转控制圆
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", rotatorPos.x);
+      circle.setAttribute("cy", rotatorPos.y);
+      circle.setAttribute("r", "6");
+      circle.setAttribute("fill", "#1e293b");
+      circle.setAttribute("stroke", "white");
+      circle.setAttribute("stroke-width", "1.5");
+      circle.setAttribute("class", "rotator-circle");
+      circle.addEventListener("mousedown", onRotatorMouseDown);
+      rotatorGroup.appendChild(circle);
+    }
+
+    function updateSelectedCount() {
+      selectedCountSpan.textContent = `已选 ${selectedPieceIds.size} 块`;
+    }
+
+    // ---------- 工具：生成唯一ID ----------
+    function generateId() {
+      return `piece-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    }
+
+    // ---------- 调色板拖拽事件 ----------
+    function onPaletteMouseDown(e) {
+      e.stopPropagation();
+      e.preventDefault();
+
+      const shapeId = e.currentTarget.getAttribute("data-shape-id");
+      const origShape = originalShapes.find(s => s.id === shapeId);
+      if (!origShape) return;
+
+      // 解析原始旋转信息用于预览
+      const { rotate } = extractTransformParams(origShape.initialTransform);
+      dragPreview = {
+        shapeId: shapeId,
+        color: origShape.color,
+        path: origShape.path,
+        rotateAngle: rotate.angle
+      };
+      isDraggingFromPalette = true;
+      dragStartClient = { x: e.clientX, y: e.clientY };
+
+      // 添加临时预览元素到画布 (先隐藏，在移动时显示)
+      updateDragPreview(e.clientX, e.clientY);
+    }
+
+    function updateDragPreview(clientX, clientY) {
+      // 移除旧预览
+      const oldPreview = document.getElementById('dragPreviewGroup');
+      if (oldPreview) oldPreview.remove();
+
+      if (!dragPreview) return;
+
+      const svgCoords = clientToSvg(canvasSvg, clientX, clientY);
+      const previewG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      previewG.setAttribute("id", "dragPreviewGroup");
+      previewG.setAttribute("class", "preview-piece");
+      previewG.setAttribute("transform", `translate(${svgCoords.x} ${svgCoords.y}) ${dragPreview.rotateAngle !== 0 ? `rotate(${dragPreview.rotateAngle})` : ''}`);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", dragPreview.path);
+      path.setAttribute("fill", dragPreview.color);
+      path.setAttribute("stroke", "white");
+      path.setAttribute("stroke-width", "0.8");
+      path.setAttribute("stroke-dasharray", "4,3");
+      previewG.appendChild(path);
+      canvasSvg.appendChild(previewG);
+    }
+
+    function finishDragFromPalette(clientX, clientY) {
+      if (!dragPreview) return;
+
+      // 检查鼠标是否在画布区域内
+      const rect = canvasSvg.getBoundingClientRect();
+      const isOverCanvas = clientX >= rect.left && clientX <= rect.right &&
+                           clientY >= rect.top && clientY <= rect.bottom;
+
+      if (isOverCanvas) {
+        const svgCoords = clientToSvg(canvasSvg, clientX, clientY);
+        const origShape = originalShapes.find(s => s.id === dragPreview.shapeId);
+        if (origShape) {
+          const { rotate } = extractTransformParams(origShape.initialTransform);
+          const newPiece = {
+            id: generateId(),
+            shapeId: origShape.id,
+            color: origShape.color,
+            path: origShape.path,
+            transform: generateTransform(svgCoords, rotate.angle, false),
+            flipped: false
+          };
+          canvasPieces.push(newPiece);
+          // 选中新图形
+          if (isShiftPressed) {
+            selectedPieceIds.add(newPiece.id);
+          } else {
+            selectedPieceIds.clear();
+            selectedPieceIds.add(newPiece.id);
+          }
+          activePieceId = newPiece.id;
+          renderCanvas();
+        }
+      }
+
+      // 清理预览
+      const previewEl = document.getElementById('dragPreviewGroup');
+      if (previewEl) previewEl.remove();
+      dragPreview = null;
+      isDraggingFromPalette = false;
+    }
+
+    // ---------- 画布内图形事件 ----------
+    function onCanvasPieceMouseDown(e) {
+      e.stopPropagation();
+      e.preventDefault();
+
+      const pieceId = e.currentTarget.getAttribute("data-piece-id");
+      if (!pieceId) return;
+
+      // 处理多选
+      if (isShiftPressed) {
+        if (selectedPieceIds.has(pieceId)) {
+          selectedPieceIds.delete(pieceId);
+          if (activePieceId === pieceId) {
+            activePieceId = selectedPieceIds.size > 0 ? Array.from(selectedPieceIds)[0] : null;
+          }
+        } else {
+          selectedPieceIds.add(pieceId);
+          activePieceId = pieceId;
+        }
+      } else {
+        if (!selectedPieceIds.has(pieceId)) {
+          selectedPieceIds.clear();
+          selectedPieceIds.add(pieceId);
+        }
+        activePieceId = pieceId;
+      }
+
+      // 准备移动
+      isMovingPieces = true;
+      const svgCoords = clientToSvg(canvasSvg, e.clientX, e.clientY);
+      moveStartSvg = { x: svgCoords.x, y: svgCoords.y };
+
+      // 记录所有选中图形的初始变换
+      moveStartTransforms.clear();
+      for (const id of selectedPieceIds) {
+        const piece = canvasPieces.find(p => p.id === id);
+        if (piece) {
+          const { translate, rotate } = extractTransformParams(piece.transform);
+          moveStartTransforms.set(id, { translate: { ...translate }, rotate: rotate.angle, flipped: piece.flipped });
+        }
+      }
+      // 如果活动图形不在选中集合中（理论上不会），单独移动活动图形
+      if (!selectedPieceIds.has(activePieceId) && activePieceId) {
+        const piece = canvasPieces.find(p => p.id === activePieceId);
+        if (piece) {
+          const { translate, rotate } = extractTransformParams(piece.transform);
+          moveStartTransforms.set(activePieceId, { translate: { ...translate }, rotate: rotate.angle, flipped: piece.flipped });
+        }
+      }
+
+      renderCanvas();
+      e.currentTarget.setPointerCapture(e.pointerId || 1);
+    }
+
+    function onCanvasMouseMove(e) {
+      if (isDraggingFromPalette) {
+        updateDragPreview(e.clientX, e.clientY);
+        return;
+      }
+      if (!isMovingPieces) return;
+
+      const svgCoords = clientToSvg(canvasSvg, e.clientX, e.clientY);
+      const dx = svgCoords.x - moveStartSvg.x;
+      const dy = svgCoords.y - moveStartSvg.y;
+
+      // 更新所有选中图形的位置
+      const idsToMove = new Set(selectedPieceIds);
+      if (activePieceId && !idsToMove.has(activePieceId)) idsToMove.add(activePieceId);
+
+      for (const id of idsToMove) {
+        const piece = canvasPieces.find(p => p.id === id);
+        if (!piece) continue;
+        const startData = moveStartTransforms.get(id);
+        if (!startData) continue;
+
+        const newTranslate = {
+          x: startData.translate.x + dx,
+          y: startData.translate.y + dy
+        };
+        piece.transform = generateTransform(newTranslate, startData.rotate, startData.flipped);
+      }
+      renderCanvas();
+    }
+
+    function onCanvasMouseUp(e) {
+      if (isDraggingFromPalette) {
+        finishDragFromPalette(e.clientX, e.clientY);
+        return;
+      }
+      if (isMovingPieces) {
+        isMovingPieces = false;
+        moveStartTransforms.clear();
+        // 释放指针捕获
+        if (e.target && e.target.releasePointerCapture) {
+          e.target.releasePointerCapture(e.pointerId || 1);
+        }
+      }
+    }
+
+    // 点击空白区域取消选中
+    function onCanvasBackgroundClick(e) {
+      if (e.target === canvasSvg || e.target.id === 'canvasBackground' || e.target.tagName === 'rect') {
+        activePieceId = null;
+        selectedPieceIds.clear();
+        renderCanvas();
+      }
+    }
+
+    // ---------- 旋转控制器事件 ----------
+    function onRotatorMouseDown(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!activePieceId) return;
+
+      const piece = canvasPieces.find(p => p.id === activePieceId);
+      if (!piece) return;
+
+      isRotating = true;
+      const { translate, rotate } = extractTransformParams(piece.transform);
+      const svgCoords = clientToSvg(canvasSvg, e.clientX, e.clientY);
+      const startAngle = Math.atan2(svgCoords.y - translate.y, svgCoords.x - translate.x) * (180 / Math.PI);
+      const initialRotation = rotate.angle;
+
+      function onRotateMove(e) {
+        if (!isRotating) return;
+        const currentSvg = clientToSvg(canvasSvg, e.clientX, e.clientY);
+        const currentAngle = Math.atan2(currentSvg.y - translate.y, currentSvg.x - translate.x) * (180 / Math.PI);
+        let angleDiff = currentAngle - startAngle;
+        let newAngle = initialRotation + angleDiff;
+
+        // 角度吸附
+        const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315, 360];
+        const threshold = 8;
+        let normalized = newAngle % 360;
+        if (normalized < 0) normalized += 360;
+        for (const snap of snapAngles) {
+          const diff = Math.abs(normalized - snap);
+          if (diff < threshold || 360 - diff < threshold) {
+            newAngle = snap;
+            break;
+          }
+        }
+        if (newAngle === 360) newAngle = 0;
+
+        // 更新活动图形以及所有选中图形的旋转（保持相对角度？这里简化：只旋转活动图形，但多选时通常一起旋转）
+        // 按原需求：旋转活动图形时，其他选中图形也同步旋转（相对旋转差值）
+        const angleChange = newAngle - initialRotation;
+        for (const id of selectedPieceIds) {
+          const p = canvasPieces.find(p => p.id === id);
+          if (!p) continue;
+          const { translate: t, rotate: r } = extractTransformParams(p.transform);
+          const newR = r.angle + angleChange;
+          p.transform = generateTransform(t, newR, p.flipped);
+        }
+        // 确保活动图形更新
+        const activePiece = canvasPieces.find(p => p.id === activePieceId);
+        if (activePiece) {
+          const { translate: t } = extractTransformParams(activePiece.transform);
+          activePiece.transform = generateTransform(t, newAngle, activePiece.flipped);
+        }
+        renderCanvas();
+      }
+
+      function onRotateUp() {
+        isRotating = false;
+        document.removeEventListener('mousemove', onRotateMove);
+        document.removeEventListener('mouseup', onRotateUp);
+      }
+
+      document.addEventListener('mousemove', onRotateMove);
+      document.addEventListener('mouseup', onRotateUp);
+    }
+
+    // ---------- 翻转功能 ----------
+    function flipSelectedPieces() {
+      if (selectedPieceIds.size === 0 && !activePieceId) return;
+      const idsToFlip = selectedPieceIds.size > 0 ? new Set(selectedPieceIds) : new Set([activePieceId]);
+
+      for (const id of idsToFlip) {
+        const piece = canvasPieces.find(p => p.id === id);
+        if (!piece) continue;
+        const { translate, rotate } = extractTransformParams(piece.transform);
+        const newFlipped = !piece.flipped;
+        piece.transform = generateTransform(translate, rotate.angle, newFlipped);
+        piece.flipped = newFlipped;
+      }
+      renderCanvas();
+    }
+
+    function clearCanvas() {
+      canvasPieces = [];
+      activePieceId = null;
+      selectedPieceIds.clear();
+      renderCanvas();
+    }
+
+    // ---------- 全局事件监听 ----------
+    function setupGlobalListeners() {
+      // 键盘Shift状态
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Shift') {
+          isShiftPressed = true;
+        }
+        if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          selectedPieceIds.clear();
+          canvasPieces.forEach(p => selectedPieceIds.add(p.id));
+          if (canvasPieces.length > 0) activePieceId = canvasPieces[0].id;
+          renderCanvas();
+        }
+      });
+      window.addEventListener('keyup', (e) => {
+        if (e.key === 'Shift') {
+          isShiftPressed = false;
+        }
+      });
+
+      // 全局鼠标移动和释放，处理画布外释放
+      document.addEventListener('mousemove', (e) => {
+        if (isDraggingFromPalette) {
+          updateDragPreview(e.clientX, e.clientY);
+        } else if (isMovingPieces) {
+          onCanvasMouseMove(e);
+        }
+      });
+
+      document.addEventListener('mouseup', (e) => {
+        if (isDraggingFromPalette) {
+          finishDragFromPalette(e.clientX, e.clientY);
+        }
+        if (isMovingPieces) {
+          isMovingPieces = false;
+          moveStartTransforms.clear();
+        }
+      });
+
+      // 画布背景点击
+      canvasSvg.addEventListener('click', onCanvasBackgroundClick);
+      // 防止从画布空白区域开始拖拽
+      canvasSvg.addEventListener('mousedown', (e) => {
+        if (e.target === canvasSvg || e.target.id === 'canvasBackground' || e.target.tagName === 'rect') {
+          // 不启动移动
+        }
+      });
+    }
+
+    // 绑定按钮事件
+    document.getElementById('flipBtn').addEventListener('click', flipSelectedPieces);
+    document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+
+    // 启动
+    renderPalette();
+    renderCanvas();
+    setupGlobalListeners();
+
+    // 初始选中计数
+    updateSelectedCount();
+  })();
+</script>
+</body>
+</html>
